@@ -7,10 +7,10 @@ use Spatie\Permission\Models\Permission;
 
 beforeEach(function () {
     Artisan::call('migrate:fresh');
-    Role::create(['name' => 'admin', 'guard_name' => 'api']);
-    Role::create(['name' => 'cashier', 'guard_name' => 'api']);
-    Permission::create(['name' => 'view_product', 'guard_name' => 'api']);
-    Permission::create(['name' => 'view_category', 'guard_name' => 'api']);
+    $admin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'api']);
+    $cashier = Role::firstOrCreate(['name' => 'cashier', 'guard_name' => 'api']);
+    Permission::firstOrCreate(['name' => 'view_product', 'guard_name' => 'api']);
+    Permission::firstOrCreate(['name' => 'view_category', 'guard_name' => 'api']);
 });
 
 test('auth routes work', function () {
@@ -35,11 +35,11 @@ test('resource routes require authentication', function () {
 
 test('authenticated user can access resources', function () {
     $user = User::factory()->create();
-    $role = Role::create(['name' => 'admin', 'guard_name' => 'api']);
+    $role = Role::where('name', 'admin')->where('guard_name', 'api')->first();
     $role->givePermissionTo(['view_product', 'view_category']);
     $user->assignRole('admin');
     
-    $this->actingAs($user, 'api');
+    $this->actingAs($user, 'sanctum');
 
     $this->getJson('/api/products')->assertStatus(200);
     $this->getJson('/api/categories')->assertStatus(200);
