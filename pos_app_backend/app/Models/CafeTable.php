@@ -12,6 +12,7 @@ class CafeTable extends Model
     protected $fillable = [
         'number',
         'capacity',
+        'floor',
         'status',
         'qr_code'
     ];

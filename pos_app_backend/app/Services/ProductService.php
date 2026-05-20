@@ -40,7 +40,6 @@ class ProductService extends BaseService
                         'size_name' => $variant['size_name'] ?? 'Regular',
                         'price'     => $variant['price'],
                         'stock_qty' => $variant['stock_qty'] ?? 0,
-                        'barcode'   => $variant['barcode'] ?? null,
                     ]);
                 }
             }
@@ -68,16 +67,36 @@ class ProductService extends BaseService
             }
 
             if (isset($data['variants']) && is_array($data['variants'])) {
-                // Simplest approach: delete and recreate variants for now
-                // In production, you might want to match by ID
-                $product->variants()->delete();
+                $incomingVariantIds = collect($data['variants'])
+                    ->filter(fn($v) => isset($v['id']))
+                    ->pluck('id')
+                    ->toArray();
+                
+                // Attempt to delete variants not present in the request
+                $variantsToDelete = $product->variants()->whereNotIn('id', $incomingVariantIds)->get();
+                foreach ($variantsToDelete as $variant) {
+                    try {
+                        $variant->delete();
+                    } catch (\Illuminate\Database\QueryException $e) {
+                        \Log::warning("Skipped deletion of variant '{$variant->size_name}' (ID: {$variant->id}) due to existing orders.");
+                        // Silently skip deletion for variants with existing orders
+                    }
+                }
+
+                // Update or create new variants
                 foreach ($data['variants'] as $variant) {
-                    $product->variants()->create([
-                        'size_name' => $variant['size_name'] ?? 'Regular',
-                        'price'     => $variant['price'],
-                        'stock_qty' => $variant['stock_qty'] ?? 0,
-                        'barcode'   => $variant['barcode'] ?? null,
-                    ]);
+                    $attributes = ['size_name' => $variant['size_name'] ?? 'Regular'];
+                    if (!empty($variant['id'])) {
+                        $attributes['id'] = (int) $variant['id'];
+                    }
+
+                    $product->variants()->updateOrCreate(
+                        $attributes,
+                        [
+                            'price'     => $variant['price'],
+                            'stock_qty' => $variant['stock_qty'] ?? 0,
+                        ]
+                    );
                 }
             }
 

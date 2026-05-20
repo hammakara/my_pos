@@ -3,37 +3,44 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Order;
-use Illuminate\Support\Facades\DB;
+use App\Services\ReportService;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
+    protected $reportService;
+
+    public function __construct(ReportService $reportService)
+    {
+        $this->reportService = $reportService;
+    }
+
     public function dashboard(Request $request)
     {
-        // Daily revenue for last 7 days
-        $dailySales = Order::where('status', 'paid')
-            ->where('created_at', '>=', now()->subDays(7))
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get([
-                DB::raw('DATE(created_at) as date'),
-                DB::raw('SUM(total) as revenue')
-            ]);
+        return response()->json($this->reportService->getDashboardData());
+    }
 
-        // Best selling products
-        $topProducts = DB::table('order_items')
-            ->join('product_variants', 'order_items.product_variant_id', '=', 'product_variants.id')
-            ->join('products', 'product_variants.product_id', '=', 'products.id')
-            ->select('products.name', DB::raw('SUM(order_items.quantity) as total_qty'))
-            ->groupBy('products.name')
-            ->orderBy('total_qty', 'desc')
-            ->limit(5)
-            ->get();
+    public function sales(Request $request)
+    {
+        $filters = [
+            'start_date' => $request->from ?? null,
+            'end_date' => $request->to ?? null,
+            'status' => $request->status ?? null,
+        ];
+        return response()->json($this->reportService->getSalesReport($filters));
+    }
 
-        return response()->json([
-            'daily_sales'  => $dailySales,
-            'top_products' => $topProducts,
-        ]);
+    public function products(Request $request)
+    {
+        $filters = [
+            'category_id' => $request->category_id ?? null,
+            'status' => $request->status ?? null,
+        ];
+        return response()->json($this->reportService->getProductsReport($filters));
+    }
+
+    public function inventory(Request $request)
+    {
+        return response()->json(['data' => $this->reportService->getInventoryReport()]);
     }
 }

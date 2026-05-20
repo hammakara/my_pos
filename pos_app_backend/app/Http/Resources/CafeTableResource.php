@@ -13,6 +13,7 @@ class CafeTableResource extends JsonResource
             'id'       => $this->id,
             'number'   => $this->number,
             'capacity' => $this->capacity,
+            'floor'    => (int) ($this->floor ?? 1),
             'status'   => $this->status,
             'qr_code'  => $this->qr_code,
         ];

@@ -25,6 +25,13 @@ class ProductController extends Controller
 
     public function store(Request $request)
     {
+        \Log::info('Product Store Request', [
+            'has_image' => $request->hasFile('image'),
+            'all_files' => array_keys($request->allFiles()),
+            'all_inputs' => array_keys($request->all()),
+            'content_type' => $request->header('Content-Type'),
+        ]);
+
         $data = $request->validate([
             'category_id' => 'required|exists:categories,id',
             'name'        => 'required|string|max:255',
@@ -35,8 +42,9 @@ class ProductController extends Controller
             'variants.*.size_name' => 'required|string',
             'variants.*.price'     => 'required|numeric|min:0',
             'variants.*.stock_qty' => 'nullable|integer|min:0',
-            'variants.*.barcode'   => 'nullable|string|unique:product_variants,barcode',
         ]);
+
+        \Log::info('Product Store Validated Data', ['has_image_in_data' => isset($data['image'])]);
 
         $product = $this->productService->createProduct($data);
 
@@ -53,28 +61,94 @@ class ProductController extends Controller
 
     public function update(Request $request, int $id)
     {
-        $data = $request->validate([
-            'category_id' => 'sometimes|required|exists:categories,id',
-            'name'        => 'sometimes|required|string|max:255',
-            'description' => 'nullable|string',
-            'status'      => 'nullable|in:active,inactive',
-            'image'       => 'nullable|image|max:2048',
-            'variants'    => 'sometimes|required|array|min:1',
-            'variants.*.size_name' => 'required|string',
-            'variants.*.price'     => 'required|numeric|min:0',
-            'variants.*.stock_qty' => 'nullable|integer|min:0',
-            'variants.*.barcode'   => 'nullable|string',
-        ]);
+        try {
+            \Log::info('Product Update Request', [
+                'product_id' => $id,
+                'user_id' => auth()->id(),
+                'has_image' => $request->hasFile('image'),
+                'all_inputs' => array_keys($request->all()),
+                'content_type' => $request->header('Content-Type'),
+            ]);
 
-        $product = $this->productService->updateProduct($id, $data);
-        if (!$product) return response()->json(['message' => 'Not found'], 404);
+            $data = $request->validate([
+                'category_id' => 'sometimes|required|exists:categories,id',
+                'name'        => 'sometimes|required|string|max:255',
+                'description' => 'nullable|string',
+                'status'      => 'nullable|in:active,inactive',
+                'image'       => 'nullable|image|max:2048',
+                'variants'    => 'sometimes|required|array|min:1',
+                'variants.*.size_name' => 'required|string',
+                'variants.*.price'     => 'required|numeric|min:0',
+                'variants.*.stock_qty' => 'nullable|integer|min:0',
+            ]);
 
-        return new ProductResource($product);
+            \Log::info('Product Update Validated', ['has_image_in_data' => isset($data['image'])]);
+
+            $product = $this->productService->updateProduct($id, $data);
+            
+            if (!$product) {
+                \Log::error('Product not found', ['product_id' => $id]);
+                return response()->json(['message' => 'Product not found'], 404);
+            }
+
+            \Log::info('Product Updated Successfully', ['product_id' => $id]);
+            return new ProductResource($product);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Log::error('Product Update Validation Failed', [
+                'product_id' => $id,
+                'errors' => $e->errors()
+            ]);
+            throw $e;
+        } catch (\Exception $e) {
+            \Log::error('Product Update Failed', [
+                'product_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'message' => 'Failed to update product',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function destroy(int $id)
     {
-        $this->productService->deleteProduct($id);
-        return response()->json(null, 204);
+        try {
+            \Log::info('Product Delete Request', [
+                'product_id' => $id,
+                'user_id' => auth()->id(),
+            ]);
+
+            $result = $this->productService->deleteProduct($id);
+            
+            if (!$result) {
+                \Log::error('Product not found for deletion', ['product_id' => $id]);
+                return response()->json(['message' => 'Product not found'], 404);
+            }
+
+            \Log::info('Product Deleted Successfully', ['product_id' => $id]);
+            return response()->json(null, 204);
+            
+        } catch (\Illuminate\Database\QueryException $e) {
+            \Log::error('Product Delete Constraint Violation', ['product_id' => $id, 'error' => $e->getMessage()]);
+            if ($e->getCode() == '23000') {
+                return response()->json([
+                    'message' => 'Cannot delete product because it has associated orders. Please set its status to Inactive instead.'
+                ], 400);
+            }
+            return response()->json(['message' => 'Database error occurred', 'error' => $e->getMessage()], 500);
+        } catch (\Exception $e) {
+            \Log::error('Product Delete Failed', [
+                'product_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'message' => 'Failed to delete product',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

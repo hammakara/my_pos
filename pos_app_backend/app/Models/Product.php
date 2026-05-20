@@ -19,6 +19,13 @@ class Product extends Model implements HasMedia
         'user_id'
     ];
 
+    protected $appends = ['image_url'];
+
+    public function getImageUrlAttribute()
+    {
+        return $this->getFirstMediaUrl('product_images');
+    }
+
     public function category()
     {
         return $this->belongsTo(Category::class);
